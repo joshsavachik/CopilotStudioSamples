@@ -1,9 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Elements xmlns="http://schemas.microsoft.com/sharepoint/">
-    <CustomAction
-        Title="PvaSso"
-        Location="ClientSideExtension.ApplicationCustomizer"
-        ClientSideComponentId="bbcf8287-ea2d-4bb6-868f-19b9cf4b0812"
-        ClientSideComponentProperties="{&quot;botURL&quot;:&quot;YOUR_BOT_URL&quot;,&quot;customScope&quot;:&quot;YOUR_CUSTOM_SCOPE&quot;,&quot;clientID&quot;:&quot;YOU_CLIENT_ID&quot;,&quot;authority&quot;:&quot;YOUR_AAD_LOGIN_URL&quot;,&quot;greet&quot;:true,&quot;buttonLabel&quot;:&quot;CHAT_BUTTON_LABEL&quot;,&quot;botName&quot;:&quot;BOT_NAME&quot;}">
+    <CustomAction Title="PvaSso" Location="ClientSideExtension.ApplicationCustomizer" ClientSideComponentId="bbcf8287-ea2d-4bb6-868f-19b9cf4b0812" ClientSideComponentProperties="{&quot;botURL&quot;:&quot;https://b4c8b881e201e79b9e25bd786e2706.06.environment.api.powerplatform.com/powervirtualagents/botsbyschema/cr36d_aPiInnovationAggregator/directline/token?api-version=2022-03-01-preview&quot;,&quot;customScope&quot;:&quot;api://759d8cb6-6440-4e84-9abf-3884c3ecb46b/SPO.Read&quot;,&quot;clientID&quot;:&quot;99d2ae3e-f633-4f6b-9496-6b6a11d20105&quot;,&quot;authority&quot;:&quot;https://login.microsoftonline.com/2af10afe-84c4-46b3-bfb5-5b2c870e6af7&quot;,&quot;greet&quot;:true,&quot;buttonLabel&quot;:&quot;Submit an idea&quot;,&quot;botName&quot;:&quot;APi Innovation Hub&quot;}">
     </CustomAction>
 </Elements>
