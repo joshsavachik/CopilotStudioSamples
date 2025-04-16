@@ -28,6 +28,21 @@ build.configureWebpack.mergeConfig({
       }
     );
 
+    // Add resolve.symlinks configuration to help with case sensitivity issues
+    if (!generatedConfiguration.resolve) {
+      generatedConfiguration.resolve = {};
+    }
+    
+    // Set to false to correctly resolve paths with different casing
+    generatedConfiguration.resolve.symlinks = false;
+    
+    // Optionally add this if you still have issues
+    generatedConfiguration.resolve.alias = {
+      ...generatedConfiguration.resolve.alias,
+      // Fix paths to ensure consistent casing
+      'SharePointSSOComponent': __dirname
+    };
+    
     return generatedConfiguration;
   }
 });

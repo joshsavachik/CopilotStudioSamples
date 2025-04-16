@@ -6,6 +6,7 @@ import { DefaultButton } from 'office-ui-fabric-react/lib/Button';
 import { Spinner } from 'office-ui-fabric-react/lib/Spinner';
 import { Dispatch } from 'redux'
 import { useRef } from "react";
+import { AuthenticationResult } from "@azure/msal-browser";
 
 import { IChatbotProps } from "./IChatBotProps";
 import MSALWrapper from "./MSALWrapper";
@@ -52,17 +53,57 @@ export const PVAChatbotDialog: React.FunctionComponent<IChatbotProps> = (props) 
 
     const handleLayerDidMount = async () => {
         
-        const MSALWrapperInstance = new MSALWrapper(props.clientID, props.authority);
+        // Use the passed MSALWrapper instance or create one if not provided (should not happen)
+        const MSALWrapperInstance = props.msalWrapperInstance || new MSALWrapper(props.clientID, props.authority);
 
-        // Trying to get token if user is already signed-in
-        let responseToken = await MSALWrapperInstance.handleLoggedInUser([props.customScope], props.userEmail);
+        // --- Redirect Handling --- 
+        // Call handleRedirectPromise FIRST to process any authentication response hash in the URL.
+        // This needs to run *before* any token acquisition attempts.
+        let authResultFromRedirect: AuthenticationResult | null = null;
+        try {
+             authResultFromRedirect = await MSALWrapperInstance.handleRedirectPromise();
+             if (authResultFromRedirect) {
+                 console.log('Chatbot: Successfully processed redirect response.');
+                 // If handleRedirectPromise processed a token, we might not need to acquire another one immediately.
+                 // The underlying MSAL instance now has the account info and tokens in cache.
+             } else {
+                 console.log('Chatbot: No redirect response to process.');
+             }
+        } catch (error) {
+            // Log the error but continue, as the page might still load if a cached token exists.
+            console.error('Chatbot: Error during handleRedirectPromise:', error);
+        }
+        // --- End Redirect Handling ---
 
-        if (!responseToken) {
-            // Trying to get token if user is not signed-in
-            responseToken = await MSALWrapperInstance.acquireAccessToken([props.customScope], props.userEmail);
+        // Now, attempt to get a token for the bot.
+        let finalAuthResult: AuthenticationResult | null = authResultFromRedirect; // Use redirect token if available
+
+        // If redirect didn't provide a token, try to get one silently for an existing user.
+        if (!finalAuthResult) {
+            console.log('Chatbot: Redirect did not provide token, attempting silent acquisition for logged in user...');
+            finalAuthResult = await MSALWrapperInstance.handleLoggedInUser([props.customScope], props.userEmail);
         }
 
-        const token = responseToken?.accessToken || null;
+        // If still no token (no redirect response, no logged-in user with cached token), 
+        // attempt the full acquireAccessToken flow (silent -> interactive redirect).
+        if (!finalAuthResult) {
+            console.log('Chatbot: No token from redirect or logged-in user, initiating acquireAccessToken flow...');
+            // acquireAccessToken will handle the loginRedirect if necessary.
+            // We expect null here if acquireAccessToken initiates a redirect.
+            finalAuthResult = await MSALWrapperInstance.acquireAccessToken([props.customScope], props.userEmail);
+        }
+
+        // Proceed only if we have a final token (either from redirect or acquisition)
+        const token = finalAuthResult?.accessToken || null;
+        if (!token) {
+            console.warn('Chatbot: Could not acquire token after all attempts. Webchat might not function correctly.');
+            // Optionally hide spinner or show an error message
+            if (loadingSpinnerRef.current) loadingSpinnerRef.current.style.display = 'none';
+            // Consider adding a user-facing message here
+            return; // Stop execution if no token
+        }
+        
+        console.log('Chatbot: Successfully obtained token, proceeding to render webchat.');
 
         // Get the regional channel URL
         let regionalChannelURL;
@@ -126,35 +167,38 @@ export const PVAChatbotDialog: React.FunctionComponent<IChatbotProps> = (props) 
                         const activity = action.payload.activity;
                         if (activity.from && activity.from.role === 'bot' &&
                         (getOAuthCardResourceUri(activity))){
-                          directline.postActivity({
-                            type: 'invoke',
-                            name: 'signin/tokenExchange',
-                            value: {
-                              id: activity.attachments[0].content.tokenExchangeResource.id,
-                              connectionName: activity.attachments[0].content.connectionName,
-                              token
-                            },
-                            "from": {
-                              id: props.userEmail,
-                              name: props.userFriendlyName,
-                              role: "user"
-                            }
-                                }).subscribe(
-                                    (id: any) => {
-                                      if(id === "retry"){
-                                        // bot was not able to handle the invoke, so display the oauthCard (manual authentication)
-                                        console.log("bot was not able to handle the invoke, so display the oauthCard")
-                                            return next(action);
-                                      }
-                                    },
-                                    (error: any) => {
-                                      // an error occurred to display the oauthCard (manual authentication)
-                                      console.log("An error occurred so display the oauthCard");
-                                          return next(action);
-                                    }
-                                  )
-                                // token exchange was successful, do not show OAuthCard
-                                return;
+                          // Check if token is valid before proceeding
+                          if (token) {
+                            directline.postActivity({
+                              type: 'invoke',
+                              name: 'signin/tokenExchange',
+                              value: {
+                                id: activity.attachments[0].content.tokenExchangeResource.id,
+                                connectionName: activity.attachments[0].content.connectionName,
+                                token
+                              },
+                              "from": {
+                                id: props.userEmail,
+                                name: props.userFriendlyName,
+                                role: "user"
+                              }
+                            }).subscribe(
+                                (id: any) => {
+                                  if(id === "retry"){
+                                    // bot was not able to handle the invoke, so display the oauthCard (manual authentication)
+                                    console.log("bot was not able to handle the invoke, so display the oauthCard")
+                                        return next(action);
+                                  }
+                                },
+                                (error: any) => {
+                                  // an error occurred to display the oauthCard (manual authentication)
+                                  console.log("An error occurred so display the oauthCard");
+                                      return next(action);
+                                }
+                              )
+                              // token exchange was successful, do not show OAuthCard
+                              return;
+                          }
                         }
                       } else {
                         return next(action);
@@ -192,7 +236,28 @@ export const PVAChatbotDialog: React.FunctionComponent<IChatbotProps> = (props) 
 
     return (
         <>
-            <DefaultButton secondaryText={props.buttonLabel} text={props.buttonLabel} onClick={toggleHideDialog}/>
+            <DefaultButton 
+                secondaryText={props.buttonLabel} 
+                text={props.buttonLabel} 
+                onClick={toggleHideDialog}
+                styles={{
+                    root: {
+                        backgroundColor: '#d9222a',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        boxShadow: '0 4px 8px rgba(255, 0, 0, 0.5)',
+                        position: 'fixed',
+                        bottom: '20px',
+                        right: '20px',
+                        zIndex: 1000
+                    },
+                    rootHovered: {
+                        backgroundColor: '#b71d25',
+                        color: 'white'
+                    }
+                }}
+            />
             <Dialog styles={{
                 main: { selectors: { ['@media (min-width: 480px)']: { width: 450, minWidth: 450, maxWidth: '1000px' } } }
             }} hidden={hideDialog} onDismiss={toggleHideDialog} onLayerDidMount={handleLayerDidMount} dialogContentProps={dialogContentProps} modalProps={modalProps}>
@@ -212,7 +277,13 @@ export default class Chatbot extends React.Component<IChatbotProps> {
     }
     public render(): JSX.Element {
         return (
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingBottom: "1rem" }}>
+            <div style={{ 
+                display: "flex", 
+                flexDirection: "column", 
+                alignItems: "center", 
+                paddingBottom: "1rem",
+                backgroundColor: "transparent" 
+            }}>
                 <PVAChatbotDialog
                 {...this.props}/>
             </div>

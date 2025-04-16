@@ -10,4 +10,5 @@ export interface IChatbotProps {
      customScope: string;
      clientID: string;
      authority: string;
+     msalWrapperInstance?: import('./MSALWrapper').default;
 }
