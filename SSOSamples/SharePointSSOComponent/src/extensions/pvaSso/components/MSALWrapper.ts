@@ -90,20 +90,9 @@ export class MSALWrapper {
   private msalInstance: PublicClientApplication;
   private redirectUri: string;
 
-  constructor(clientId: string, authority: string) {
-    // Determine if we're on the homepage using the more accurate check
-    // const isHomePage = isActualHomePage(); // No longer needed here
-    
-    // // Remove the logic that stored URL on initialization
-    // if (!isHomePage) {
-    //   console.log('Storing URL on MSAL initialization:', window.location.href);
-    //   safeStorage.setItem('msalOriginalUrl', window.location.href);
-    // } else {
-    //   console.log('Not storing URL because we are on homepage');
-    // }
-
-    // Use the base SharePoint site URL as the redirect URI
-    this.redirectUri = baseSharePointSiteUrl;
+  constructor(clientId: string, authority: string, customRedirectUri?: string) {
+    // Use the provided custom redirectUri if available, otherwise use the automatically detected one
+    this.redirectUri = customRedirectUri || baseSharePointSiteUrl;
     console.log('Using redirect URI:', this.redirectUri);
 
     // Determine the best cache location based on browser capabilities
@@ -173,6 +162,16 @@ export class MSALWrapper {
     };
 
     this.msalInstance = new PublicClientApplication(this.msalConfig);
+  }
+
+  // New method to clean up URL fragment after successful authentication
+  private cleanUrlFragment(): void {
+    if (window.location.hash) {
+      console.log('Cleaning URL hash after successful authentication');
+      // Use history API to clear the hash without causing a page refresh
+      const cleanUrl = window.location.href.split('#')[0];
+      window.history.replaceState(null, document.title, cleanUrl);
+    }
   }
 
   public async handleLoggedInUser(scopes: string[], userEmail: string): Promise<AuthenticationResult | null> {
@@ -266,22 +265,39 @@ export class MSALWrapper {
     }
   }
 
-  // Add method to handle redirect response
+  // Enhanced method to handle redirect response with better error handling
   public async handleRedirectPromise(): Promise<AuthenticationResult | null> {
     try {
-        // Log current state for debugging
-        console.log('MSALWrapper.handleRedirectPromise - Current URL:', window.location.href);
-        
-        // Only process the token response, let the global handler manage redirects
-        const response = await this.msalInstance.handleRedirectPromise();
-        if (response) {
-            console.log('Authentication successful, token acquired:', response.uniqueId);
-        }
-        
-        return response;
+      // Log current state for debugging
+      console.log('MSALWrapper.handleRedirectPromise - Current URL:', window.location.href);
+      
+      // Only process the token response, let the global handler manage redirects
+      const response = await this.msalInstance.handleRedirectPromise();
+      if (response) {
+        console.log('Authentication successful, token acquired:', response.uniqueId);
+        // Clean URL fragment after successful authentication
+        this.cleanUrlFragment();
+      }
+      
+      return response;
     } catch (error) {
-        console.log("Handle redirect promise failed:", error);
-        return null;
+      // Enhanced error logging with more specific details
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      const errorName = error instanceof Error ? error.name : 'UnknownError';
+      
+      console.error(`Handle redirect promise failed: ${errorName}`, {
+        message: errorMessage,
+        error: error,
+        url: window.location.href,
+        timestamp: new Date().toISOString()
+      });
+      
+      // If in a development environment, you could add more detailed logs
+      if (process.env.NODE_ENV === 'development') {
+        console.debug('Full error details:', error);
+      }
+      
+      return null;
     }
   }
 

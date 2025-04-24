@@ -70,6 +70,10 @@ export interface IPvaSsoApplicationCustomizerProperties {
    * Azure AD tenant login URL
    */
   authority: string;
+  /**
+   * Optional custom redirect URI to use instead of the auto-detected one
+   */
+  customRedirectUri?: string;
   // Add MSALWrapper instance as a prop
   msalWrapperInstance?: MSALWrapper;
 }
@@ -102,11 +106,11 @@ export default class PvaSsoApplicationCustomizer
     
     // Create the MSALWrapper instance ONLY ONCE here
     // It will be passed down to the Chatbot component
-    this._msalWrapperInstance = new MSALWrapper(this.properties.clientID, this.properties.authority);
-
-    // Remove the handleRedirectPromise call from onInit.
-    // Redirect handling will now be initiated by the Chatbot component 
-    // when it mounts and attempts to acquire a token.
+    this._msalWrapperInstance = new MSALWrapper(
+      this.properties.clientID, 
+      this.properties.authority,
+      this.properties.customRedirectUri // Pass the optional custom redirect URI
+    );
     
     // Listen for placeholder provider changes to render the chatbot
     this.context.placeholderProvider.changedEvent.add(this, this._renderPlaceHolders);
